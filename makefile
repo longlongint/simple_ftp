@@ -1,8 +1,22 @@
-PROGS = 
-CFLAGS= -Wall -g
-CC=gcc
+PROGS = server  client
+CFLAGS  = -Wall -g
 
-all:${PROGS}
+#CC:=/usr/local/arm/arm-2009q3/bin/arm-linux-gcc
+CC:=gcc
+LIBS += -pthread
+VPATH += ./inc/
+INC := -I ./
+INC +=-I ./inc
 
+depends_c = $(wildcard  ./src/*.c)				#找到所有的.c文件
+depends_o = $(wildcard  ./*.o)				    #找到所有的.o文件
+depends_h = $(wildcard  ./inc/*.h)				#找到所有的.h文件
+
+all: ${PROGS}
+
+server:${depends_c} server.c
+	${CC} ${CFLAGS} -o $@ $^ ${INC} ${LIBS}
+client:${depends_c} client.c
+	${CC} ${CFLAGS} -o $@ $^ ${INC} ${LIBS}
 clean:
-	rm -f ${PROGS} *.o
+	rm -f $(depends_o) $(PROGS)

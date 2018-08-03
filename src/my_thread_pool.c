@@ -1,4 +1,4 @@
-#include "thread_pool.h"
+#include "my_thread_pool.h"
 
 /**
  * @function:线程清理函数，防止线程带锁退出
@@ -254,4 +254,9 @@ bool destroy_pool(thread_pool *pool)
 	free(pool);
 
 	return true;
+}
+void *print(void *arg)
+{
+	printf("\rserv$ %s", (char *)arg);
+    return ((void *)0);
 }

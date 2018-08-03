@@ -47,7 +47,7 @@ bool add_task(thread_pool *pool, void *(*do_task)(void *arg), void *task);
 int  add_thread(thread_pool *pool, unsigned int additional_threads_number);
 int  remove_thread(thread_pool *pool, unsigned int removing_threads_number);
 bool destroy_pool(thread_pool *pool);
-
+void *print(void *arg);
 void *routine(void *arg);//任务执行函数
 
 
