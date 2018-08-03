@@ -255,8 +255,16 @@ bool destroy_pool(thread_pool *pool)
 
 	return true;
 }
-void *print(void *arg)
-{
+void *print(void *arg){
 	printf("\rserv$ %s", (char *)arg);
     return ((void *)0);
 }
+
+
+
+
+
+
+
+
+

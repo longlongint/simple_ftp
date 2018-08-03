@@ -120,7 +120,7 @@ void ls(int cli_fd,char *dir){
     if(strlen(dir+i)==0){
         d1=opendir("./");
     }else{
-        d1=opendir(dir);
+        d1=opendir(dir+i);
     }
 	if(d1==NULL){
         snprintf(send_cmd+6,maxMessageSize-7,"can not open %s\n",dir);
@@ -140,7 +140,7 @@ void ls(int cli_fd,char *dir){
         //printf("type:%d,len:%d\n",0x0001,strlen(send_cmd+6)+1);
         package_head(send_cmd,0x0001,strlen(send_cmd+6)+1);
         Write(cli_fd,send_cmd,strlen(send_cmd+6)+1+6);
-        printf("name:%s\n",send_cmd+6);
+        //printf("name:%s\n",send_cmd+6);
     }
 }
 
@@ -164,8 +164,7 @@ void  package_head(char *send_cmd,unsigned short cmd_num,unsigned int packet_len
 	send_cmd[i++] = (packet_len >> 24) & 0xff;
 }
 
-void Write(int fd, void *ptr, size_t nbytes)
-{
+void Write(int fd, void *ptr, size_t nbytes){
 	if (write(fd, ptr, nbytes) != nbytes)
 		printf("write error");
 }
