@@ -7,19 +7,24 @@
  * 
  * 类型字段 T:
  *    0x0001:普通消息
- *    0x0002:请求文件列表
- *    0x0003:请求文件
+ *    0x0002:请求文件列表,就是ls命令
+ *    0x0003:请求文件,就是get命令
  *    0x0004:文件内容
  *    0x0005:结束文件传输
  *    0x0006:请求上传文件
- * 
+ *    0x0007:确认收到文件片段
+ *    0x0008:请求的文件不存在
  * 注意： 
  *    数据的传输不包含'\0'
  */
 
 extern const unsigned int maxConnectNum;
 extern unsigned int curConnectNum;
+extern unsigned int maxFileNameLen;
 extern const unsigned int maxMessageSize;//允许发送的最大消息长度
+
+#define	FILE_MODE	(S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
+					/* default file access permissions for new files */
 
 /**
  * @function:创建一个TCP服务
@@ -47,7 +52,7 @@ void  package_head(char *send_cmd,unsigned short cmd_num,unsigned int packet_len
  * @param dir :路径名
  */
 void ls(int cli_fd,char *dir);
-
+void handle_get(int cli_fd,char *fileName,unsigned char *flag);
 void Write(int fd, void *ptr, size_t nbytes);
 
 

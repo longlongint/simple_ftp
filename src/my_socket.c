@@ -21,6 +21,7 @@
 
 const unsigned int maxConnectNum=1024;//记录最大连接数
 const unsigned int maxMessageSize=1024;//允许发送的最大消息长度
+unsigned int maxFileNameLen=256;//最大文件长度
 unsigned int curConnectNum=0;//保存当前连接数
 
 /**
@@ -65,9 +66,9 @@ int max(int a,int b){
  * 
  */
 void client_handle(int cli_fd){
-
+    unsigned char fileConfirm=1;//文件确认标志，1表示对端可以处理
     unsigned short cmd_num=0;
-	unsigned int packet_len = 0;
+	//unsigned int packet_len = 0;
     char buf[maxMessageSize];
     bzero(buf,maxMessageSize);
     int read_count=0;
@@ -79,11 +80,11 @@ void client_handle(int cli_fd){
             exit(0);
         }
         cmd_num=(buf[0]&0xff) | ((buf[1]<<8)&0xff);
-        packet_len=buf[2]|
-                ((buf[3]<<8 )&0xff) |
-                ((buf[4]<<16)&0xff) |
-                ((buf[5]<<24)&0xff) ;
-        printf("cmd_num=%d,packet_len=%d,strlen(buf+6)=%d\n",cmd_num,packet_len,strlen(buf+6));
+        // packet_len=buf[2]|
+        //         ((buf[3]<<8 )&0xff) |
+        //         ((buf[4]<<16)&0xff) |
+        //         ((buf[5]<<24)&0xff) ;
+        //printf("cmd_num=%d,packet_len=%d,strlen(buf+6)=%d\n",cmd_num,packet_len,strlen(buf+6));
         switch(cmd_num){
             case 0x0002:    //ls 命令
                 ls(cli_fd,buf+6);
@@ -91,9 +92,15 @@ void client_handle(int cli_fd){
             case 0x0001:    //普通的消息
                 printf("%s",buf+6);
                 break;
+            case 0x0003:    //
+                //printf("recive file requst:%s\n",buf+6);
+                handle_get(cli_fd,buf+6,&fileConfirm);
+                break;
+            case 0x0007:
+                fileConfirm=1;
+                break;
         }
     }
-
 }
 /**
  * @function:读取目录下的内容，并发送到对端
@@ -141,6 +148,48 @@ void ls(int cli_fd,char *dir){
         package_head(send_cmd,0x0001,strlen(send_cmd+6)+1);
         Write(cli_fd,send_cmd,strlen(send_cmd+6)+1+6);
         //printf("name:%s\n",send_cmd+6);
+    }
+}
+/**
+ * @function:处理get请求
+ * 
+ */
+void handle_get(int cli_fd,char *fileName,unsigned char *flag){
+    int fd=-1;
+    char send_cmd[maxMessageSize];
+    int i=0;
+    while(fileName[i]==' '&& i<maxFileNameLen){
+        i++;
+    }
+    while(1){
+        if(fileName[strlen(fileName)-1]=='\r'||fileName[strlen(fileName)-1]=='\n'){
+            fileName[strlen(fileName)-1]=0;
+        }else{
+            break;
+        }
+    }
+    printf("request file:%s\n",fileName+i);
+    fd=open(fileName+i,O_RDONLY);
+    if(fd==-1){
+        printf("oped faild||||\n");
+        perror("open ");
+        bzero(send_cmd,maxMessageSize);
+        package_head(send_cmd,0x0008,0);
+        Write(cli_fd,send_cmd,6);
+        return ;
+    }
+    while(1){
+        bzero(send_cmd,maxMessageSize);
+        int r=read(fd,send_cmd+6,maxMessageSize-6);
+        if(r<=0){//读完了,就结束文件传输
+            bzero(send_cmd,maxMessageSize);
+            package_head(send_cmd,0x0005,0);
+            Write(cli_fd,send_cmd,6);
+            return ;
+        }
+        printf("r=%d\n",r);
+        package_head(send_cmd,0x0004,r);
+        Write(cli_fd,send_cmd,6+r);
     }
 }
 

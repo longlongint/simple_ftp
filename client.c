@@ -20,9 +20,12 @@
 
 
 int del_input(int sock,char *buf);
-void ftp_cmd_ls(int sock, char *cmd);
+void send_cmd_ls(int sock, char *cmd);
+void send_cmd_get(int sock, char *fileName);
 int clientDelRecv(int sock);
-thread_pool *pool=NULL;
+int creat_file(int sock,char *buf,int len);
+static thread_pool *pool=NULL;
+static int fd=-1;
 int main(int argc,char *argv[]){
 
     if(argc<3){
@@ -64,10 +67,9 @@ int main(int argc,char *argv[]){
     int maxfdp1;
     fd_set rset;
     FD_ZERO(&rset);
-    int fd=-1;
     setbuf(stdout,NULL);
     while(1){
-        printf("$");
+        printf("\r$ ");
         bzero(buf,256);
         FD_SET(fileno(stdin),&rset);
         FD_SET(sock,&rset);
@@ -91,28 +93,60 @@ int main(int argc,char *argv[]){
 int del_input(int sock,char *cmd){
 
     if (strncmp(cmd, "ls", 2) == 0){
-			ftp_cmd_ls(sock, cmd);
-	}
+		send_cmd_ls(sock, cmd);
+	}else if(strncmp(cmd, "get", 3) == 0){
+        send_cmd_get(sock,cmd+3);
+    }else{
+        //先什么都不做，丢弃
+    }
     return 0;
 }
-void ftp_cmd_ls(int sock, char *cmd){
-	unsigned char send_cmd[512];
-	int i = 0;
-
-    unsigned short cmd_num=0x0002;
-	unsigned int packet_len = sizeof(cmd_num)+sizeof(packet_len);
-
-    send_cmd[i++] = cmd_num & 0xff;
-    send_cmd[i++] = (cmd_num >>8) & 0xff;
-	send_cmd[i++] = packet_len & 0xff;
-	send_cmd[i++] = (packet_len >> 8 ) & 0xff;
-	send_cmd[i++] = (packet_len >> 16) & 0xff;
-	send_cmd[i++] = (packet_len >> 24) & 0xff;
-
+void send_cmd_ls(int sock, char *cmd){
+	char send_cmd[512];
+    package_head(send_cmd,0x0002,6);
     snprintf((char *)send_cmd+6,240,"%s",cmd+2);
-	//2.发送
 	write(sock, send_cmd, strlen(cmd+2)+6+1);//发送结束符
-
+}
+void send_cmd_get(int sock, char *fileName){
+    int i=0;
+    while(fileName[i]==' '&& i<maxFileNameLen){
+        i++;
+    }
+    while(1){
+        if(fileName[strlen(fileName)-1]=='\r'||fileName[strlen(fileName)-1]=='\n'){
+            fileName[strlen(fileName)-1]=0;
+        }else{
+            break;
+        }
+    }
+    if(fd!=-1){
+        close(fd);
+        fd=-1;
+    }
+    char ch[maxFileNameLen];
+    bzero(ch,maxFileNameLen);
+    strcpy(ch,fileName+i);
+    while(1){
+        fd=open(ch, O_WRONLY|O_CREAT|O_EXCL,FILE_MODE);
+        if(fd==-1){//打开失败
+            if(errno==EEXIST){
+                perror("can not creat");
+                printf("input new file name: ");
+                bzero(ch,maxFileNameLen-10);
+                fgets(ch,maxFileNameLen-10, stdin);
+                ch[strlen(ch)-1]=0;
+            }else{
+                perror("open failed!\n");
+                return ;
+            }
+        }else{
+            break;
+        }
+    }
+    char send_cmd[512];
+    package_head(send_cmd,0x0003,6);
+    snprintf((char *)send_cmd+6,240,"%s",fileName+i);
+	write(sock, send_cmd, strlen(fileName+i)+6+1);//发送结束符
 }
 int clientDelRecv(int sock){
     unsigned short cmd_num=0;
@@ -130,11 +164,12 @@ int clientDelRecv(int sock){
     }
     while(1){
         cmd_num=(p[0]&0xff) | ((p[1]<<8)&0xff);
-        packet_len=p[2]|
-                ((p[3]<<8 )&0xff) |
-                ((p[4]<<16)&0xff) |
-                ((p[5]<<24)&0xff) ;
-        //printf("read:%d,cmd=%d,pa=%d,strlen(p+6)=%d\n",read_count,cmd_num,packet_len,strlen(p+6));
+        packet_len= (p[2]&0xff)     | 
+            ( (p[3]<<8)&0xff00  )   |
+          ((p[4]<<16)&0xff0000  )   |
+        ((p[5]<<24)&0xff000000);
+        printf("read:%d,cmd=%d,pa=%u,strlen(p+6)=%d\n",read_count,cmd_num,packet_len,strlen(p+6));
+        //printf("%d %d %d %d\n",p[2] , (p[3]<<8 ) , (p[4]<<16) , (p[5]<<24));
         switch(cmd_num){
             case 0x0002:    //ls 命令
                 ls(sock,p+6);
@@ -142,6 +177,21 @@ int clientDelRecv(int sock){
             case 0x0001:    //普通的消息
                 add_task(pool,print,p+6);
                 break;
+            case 0x0004:    //传输的是文件
+                //add_task(pool,creat_file,p+6);
+                creat_file(sock,p+6,packet_len);
+                break;
+            case 0x0008:    //文件不存在
+                printf("the file is not exit!\n");
+            case 0x0005:    //结束文件传输
+                if(fd==-1){
+                    close(fd);
+                    fd=-1;
+                }
+                printf("file transfer completed!\n");
+                break;
+            
+
             default:
                 //printf("");
                 break;
@@ -150,5 +200,18 @@ int clientDelRecv(int sock){
         //printf("read:%d,now:%d\n",read_count,p-buf);
         if((p-buf)>=read_count)break;
     }
+    return 0;
+}
+int creat_file(int sock,char *buf,int len){
+    char send_cmd[256];
+    bzero(send_cmd,256);
+    if(fd==-1){
+        printf("file is not open!!!\n");
+        return -1;
+    }
+    package_head(send_cmd,0x0007,0);
+    write(sock,send_cmd,6);
+    lseek(fd,0,SEEK_END);
+    Write(fd,buf,len);
     return 0;
 }
