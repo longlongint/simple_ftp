@@ -23,7 +23,7 @@ const unsigned int maxConnectNum=1024;//记录最大连接数
 const unsigned int maxMessageSize=1024;//允许发送的最大消息长度
 unsigned int maxFileNameLen=256;//最大文件长度
 unsigned int curConnectNum=0;//保存当前连接数
-
+int serv_fd=-1;
 /**
  * @function:创建一个TCP服务
  * @return -1:创建失败
@@ -66,9 +66,9 @@ int max(int a,int b){
  * 
  */
 void client_handle(int cli_fd){
-    unsigned char fileConfirm=1;//文件确认标志，1表示对端可以处理
+    //unsigned char fileConfirm=1;//文件确认标志，1表示对端可以处理
     unsigned short cmd_num=0;
-	//unsigned int packet_len = 0;
+	unsigned int packet_len = 0;
     char buf[maxMessageSize];
     bzero(buf,maxMessageSize);
     int read_count=0;
@@ -80,10 +80,10 @@ void client_handle(int cli_fd){
             exit(0);
         }
         cmd_num=(buf[0]&0xff) | ((buf[1]<<8)&0xff);
-        // packet_len=buf[2]|
-        //         ((buf[3]<<8 )&0xff) |
-        //         ((buf[4]<<16)&0xff) |
-        //         ((buf[5]<<24)&0xff) ;
+        packet_len= (buf[2]&0xff)     | 
+            ( (buf[3]<<8)&0xff00  )   |
+          ((buf[4]<<16)&0xff0000  )   |
+        ((buf[5]<<24)&0xff000000);
         //printf("cmd_num=%d,packet_len=%d,strlen(buf+6)=%d\n",cmd_num,packet_len,strlen(buf+6));
         switch(cmd_num){
             case 0x0002:    //ls 命令
@@ -94,10 +94,31 @@ void client_handle(int cli_fd){
                 break;
             case 0x0003:    //
                 //printf("recive file requst:%s\n",buf+6);
-                handle_get(cli_fd,buf+6,&fileConfirm);
+                handle_get(cli_fd,buf+6);
                 break;
+            case 0x0004:
+                creat_file(&serv_fd,cli_fd,buf+6,packet_len);
+                break;
+            case 0x0008:    //文件不存在
+                printf("the file is not exit!\n");
+            case 0x0005:    //结束文件传输
+                if(serv_fd==-1){
+                    close(serv_fd);
+                    serv_fd=-1;
+                }
+                printf("file transfer completed!\n");
+                break;
+            case 0x0006:
+                handle_put(cli_fd,buf+6);
+                break;    
             case 0x0007:
-                fileConfirm=1;
+                //fileConfirm=1;
+                break;
+            case 0x0009:
+                handle_pwd(cli_fd);
+                break;
+            case 0x000a:
+                handle_cd(cli_fd,buf+6);
                 break;
         }
     }
@@ -107,30 +128,21 @@ void client_handle(int cli_fd){
  * 
  * @param dir :路径名
  */
-void ls(int cli_fd,char *dir){
+void ls(int cli_fd,char *dirName){
 
     char send_cmd[maxMessageSize];
     bzero(send_cmd,maxMessageSize);
-    int i=0;
-    while(dir[i]==' '){
-        i++;
-    }
-    while(1){
-        if(dir[strlen(dir)-1]=='\r'||dir[strlen(dir)-1]=='\n'){
-            dir[strlen(dir)-1]=0;
-        }else{
-            break;
-        }
-    }
+    char *dir=correctName(dirName);
+    
     DIR *d1=NULL;
 
-    if(strlen(dir+i)==0){
+    if(strlen(dir)==0){
         d1=opendir("./");
     }else{
-        d1=opendir(dir+i);
+        d1=opendir(dir);
     }
 	if(d1==NULL){
-        snprintf(send_cmd+6,maxMessageSize-7,"can not open %s\n",dir);
+        snprintf(send_cmd+6,maxMessageSize-7,"can not open %s",dir);
         package_head(send_cmd,0x0001,strlen(send_cmd+6)+1);
         write(cli_fd,send_cmd,strlen(send_cmd+6)+1+6);
 		perror("DIR open error");
@@ -140,10 +152,11 @@ void ls(int cli_fd,char *dir){
     while(1){
         d1_read=readdir(d1);
 		if(d1_read==NULL){
-			perror("read_dir");
+			//perror("read_dir");
 			break;
 		}
-        snprintf(send_cmd+6,maxMessageSize-7,"%s\n",d1_read->d_name);
+        bzero(send_cmd,maxMessageSize);
+        snprintf(send_cmd+6,maxMessageSize-7,"%s",d1_read->d_name);
         //printf("type:%d,len:%d\n",0x0001,strlen(send_cmd+6)+1);
         package_head(send_cmd,0x0001,strlen(send_cmd+6)+1);
         Write(cli_fd,send_cmd,strlen(send_cmd+6)+1+6);
@@ -154,22 +167,13 @@ void ls(int cli_fd,char *dir){
  * @function:处理get请求
  * 
  */
-void handle_get(int cli_fd,char *fileName,unsigned char *flag){
+void handle_get(int cli_fd,char *filename){
     int fd=-1;
     char send_cmd[maxMessageSize];
-    int i=0;
-    while(fileName[i]==' '&& i<maxFileNameLen){
-        i++;
-    }
-    while(1){
-        if(fileName[strlen(fileName)-1]=='\r'||fileName[strlen(fileName)-1]=='\n'){
-            fileName[strlen(fileName)-1]=0;
-        }else{
-            break;
-        }
-    }
-    printf("request file:%s\n",fileName+i);
-    fd=open(fileName+i,O_RDONLY);
+    char *fileName=correctName(filename);
+
+    printf("request file:%s\n",fileName);
+    fd=open(fileName,O_RDONLY);
     if(fd==-1){
         printf("oped faild||||\n");
         perror("open ");
@@ -187,7 +191,7 @@ void handle_get(int cli_fd,char *fileName,unsigned char *flag){
             Write(cli_fd,send_cmd,6);
             return ;
         }
-        printf("r=%d\n",r);
+        //printf("r=%d\n",r);
         package_head(send_cmd,0x0004,r);
         Write(cli_fd,send_cmd,6+r);
     }
@@ -214,6 +218,78 @@ void  package_head(char *send_cmd,unsigned short cmd_num,unsigned int packet_len
 }
 
 void Write(int fd, void *ptr, size_t nbytes){
-	if (write(fd, ptr, nbytes) != nbytes)
-		printf("write error");
+	int r=write(fd, ptr, nbytes);
+    if ( r!= nbytes){
+		printf("write error: %d %d\n",r,(int)nbytes);
+    }
+}
+void handle_pwd(int cli_fd){
+    //printf("get pwd request\n");
+    char send_cmd[maxMessageSize];
+    bzero(send_cmd,maxMessageSize-6);
+    getcwd(send_cmd+6,maxMessageSize-6);
+    package_head(send_cmd,0x0001,strlen(send_cmd+6)+1);
+    write(cli_fd,send_cmd,6+strlen(send_cmd+6)+1);
+}
+void handle_cd(int cli_fd,char *pathName){
+    char *p=correctName(pathName);
+    int err = chdir(p);
+    if(err==0){//打开失败
+        perror("change path");
+        char send_cmd[maxMessageSize];
+        bzero(send_cmd,maxMessageSize-6);
+        snprintf(send_cmd+6,maxMessageSize-6,"no such path name :%s",p);
+        package_head(send_cmd,0x0001,strlen(send_cmd+6)+1);
+        write(cli_fd,send_cmd,6+strlen(send_cmd+6)+1);
+    }else{
+        handle_pwd(cli_fd);
+    }
+}
+char *correctName(char *pathName){
+    int i=0;
+    while(pathName[i]==' '){
+        i++;
+    }
+    while(1){
+        if(pathName[strlen(pathName)-1]=='\r'||pathName[strlen(pathName)-1]=='\n'||pathName[strlen(pathName)-1]==' '){
+            pathName[strlen(pathName)-1]=0;
+        }else{
+            break;
+        }
+    }
+   return  pathName+i;
+}
+void handle_put(int sock,char *fileName){
+    char *p=correctName(fileName);
+    char send_cmd[maxMessageSize];
+        printf("%d\n",__LINE__);
+
+    serv_fd=open(p, O_WRONLY|O_CREAT|O_EXCL,FILE_MODE);
+    if(serv_fd==-1){
+        if(errno==EEXIST){            
+            bzero(send_cmd,maxMessageSize-6);
+            snprintf(send_cmd+6,maxMessageSize-6,"file %s has allready exist",p);
+            package_head(send_cmd,0x0001,strlen(send_cmd+6)+1);
+            Write(sock,send_cmd,6+strlen(send_cmd+6)+1);
+        }else{
+            perror("open");
+        }
+        return ;
+    }
+    printf("%d\n",__LINE__);
+    bzero(send_cmd,maxMessageSize-6);
+    snprintf(send_cmd+6,maxMessageSize-6,"%s",p);
+    package_head(send_cmd,0x0007,strlen(send_cmd+6)+1);
+    Write(sock,send_cmd,6+strlen(send_cmd+6)+1);
+}
+int creat_file(int *file_fd,int sock,char *buf,int len){
+    char send_cmd[maxMessageSize];
+    bzero(send_cmd,maxMessageSize);
+    if(*file_fd==-1){
+        printf("file is not open!!!\n");
+        return -1;
+    }
+    lseek(*file_fd,0,SEEK_END);
+    Write(*file_fd,buf,len);
+    return 0;
 }

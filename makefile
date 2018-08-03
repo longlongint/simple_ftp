@@ -18,5 +18,6 @@ server:${depends_c} server.c
 	${CC} ${CFLAGS} -o $@ $^ ${INC} ${LIBS}
 client:${depends_c} client.c
 	${CC} ${CFLAGS} -o $@ $^ ${INC} ${LIBS}
+	cp server ~
 clean:
 	rm -f $(depends_o) $(PROGS)

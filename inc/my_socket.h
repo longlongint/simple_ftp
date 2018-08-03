@@ -12,8 +12,10 @@
  *    0x0004:文件内容
  *    0x0005:结束文件传输
  *    0x0006:请求上传文件
- *    0x0007:确认收到文件片段
+ *    0x0007:确认可以收文件
  *    0x0008:请求的文件不存在
+ *    0x0009:pwd命令
+ *    0x000a:cd命令
  * 注意： 
  *    数据的传输不包含'\0'
  */
@@ -52,11 +54,13 @@ void  package_head(char *send_cmd,unsigned short cmd_num,unsigned int packet_len
  * @param dir :路径名
  */
 void ls(int cli_fd,char *dir);
-void handle_get(int cli_fd,char *fileName,unsigned char *flag);
+void handle_pwd(int cli_fd);
+void handle_get(int cli_fd,char *fileName);
+void handle_put(int sock,char *fileName);
 void Write(int fd, void *ptr, size_t nbytes);
-
-
-
+void handle_cd(int cli_fd,char *pathName);
+char *correctName(char *pathName);
+int creat_file(int *file_fd,int sock,char *buf,int len);
 
 
 #endif
