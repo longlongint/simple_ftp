@@ -175,7 +175,7 @@ void handle_get(int cli_fd,char *filename){
     printf("request file:%s\n",fileName);
     fd=open(fileName,O_RDONLY);
     if(fd==-1){
-        printf("oped faild||||\n");
+        printf("oped faild!!!!\n");
         perror("open ");
         bzero(send_cmd,maxMessageSize);
         package_head(send_cmd,0x0008,0);
@@ -200,7 +200,7 @@ void handle_get(int cli_fd,char *filename){
 void  package_head(char *send_cmd,unsigned short cmd_num,unsigned int packet_len){
     //unsigned short cmd_num=0x0002;
 	//unsigned int packet_len = sizeof(cmd_num)+sizeof(packet_len);
-    assert(sizeof(send_cmd)>=6);
+    //assert(sizeof(send_cmd)>=6);
     int i=0;
     //cmd_num: 0x00000006
 	//cmd_num => send_cmd[0] send_cmd[1] 

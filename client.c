@@ -47,7 +47,7 @@ int main(int argc,char *argv[]){
     struct sockaddr_in lo;
 	memset(&lo, 0, sizeof(lo));
 	lo.sin_family = AF_INET;
-	lo.sin_port =  htons(  atoi(argv[2]) );
+	lo.sin_port =  0;
 
 	lo.sin_addr.s_addr = htonl(INADDR_ANY);
     int r = bind(sock,	(struct sockaddr*)&lo, sizeof(lo));
@@ -59,8 +59,8 @@ int main(int argc,char *argv[]){
     struct sockaddr_in server;
 	memset(&server,0, sizeof(server));
 	server.sin_family = AF_INET;
-	server.sin_port = htons( atoi(argv[1]) );
-	server.sin_addr.s_addr = inet_addr("127.0.0.1");
+	server.sin_port = htons( atoi(argv[2]) );
+	server.sin_addr.s_addr = inet_addr(argv[1]);
 	
     int err =  connect(sock, (struct sockaddr*)&server, sizeof(server));
 	if (err == -1){
